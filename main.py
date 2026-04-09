@@ -1,8 +1,10 @@
 from dataset import HMEDataset
+from tokenizer import Tokenizer
 
-dataset = HMEDataset("../hme100k", "../hme100k/train.txt")
+tokenizer = Tokenizer()
+tokenizer.load_vocab("vocab.json")
 
-image, label = dataset[0]
-
-print(image.shape)
-print(label)
+dataset = HMEDataset("../hme100k", "../hme100k/train.txt", tokenizer)
+image, tokens = dataset[0]
+print(image.shape)   
+print(tokens)        
