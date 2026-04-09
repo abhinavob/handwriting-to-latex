@@ -1,3 +1,5 @@
+import json
+
 class Tokenizer:
     def __init__(self):
         self.special_tokens = ["<pad>", "<start>", "<end>"]
@@ -21,3 +23,17 @@ class Tokenizer:
     def decode(self, ids):
         tokens = [self.id_to_token[i] for i in ids]
         return " ".join(tokens)
+        
+    def save_vocab(self, path):
+        with open(path, "w") as f:
+            json.dump(self.token_to_id, f, indent=4)
+            
+    def load_vocab(self, path):
+        with open(path, "r") as f:
+            self.token_to_id = json.load(f)
+
+        self.id_to_token = {int(i): tok for tok, i in self.token_to_id.items()}
+
+
+
+
