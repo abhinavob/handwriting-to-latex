@@ -4,9 +4,10 @@ from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
 class HMEDataset(Dataset):
-    def __init__(self, root_dir, label_file, max_samples=100):
+    def __init__(self, root_dir, label_file, tokenizer, max_samples=100):
         self.root_dir = Path(root_dir)
         self.samples = []
+        self.tokenizer = tokenizer
 
         with open(label_file, 'r', encoding='utf-8') as f:
             for i, line in enumerate(f):
@@ -28,8 +29,9 @@ class HMEDataset(Dataset):
         img_rel_path, label = self.samples[idx]
 
         img_path = self.root_dir / img_rel_path
-
         image = Image.open(img_path).convert('RGB')
         image = self.transform(image)
 
-        return image, label
+        tokens = self.tokenizer.encode(label)
+
+        return image, tokens
