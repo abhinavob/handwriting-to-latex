@@ -11,7 +11,7 @@ def max_len(length,a=150): #define the max len at which you recive max beifit (C
     else: 
         return False
 
-def get_repetition_penalty(tokens, current_id, penalty=-2.0):
+def get_repetition_penalty(tokens, current_id, penalty=-0.7):
     if len(tokens) > 1 and tokens[-1] == current_id and tokens[-2]==current_id:
         return penalty
     return 0.0
@@ -25,14 +25,17 @@ def divereseity(): ## if many beams have lot of common words penalise
     pass
 '''
 
-def lenp(length,k=6,a=0.78): #define before test
+def lenp(length,k=6,a=0.5): #define before test
     return ((k+length)/(k+1))**a
 
-def conv_penalty(conv,convpenalty=0.7,penalty_sum=0): #define before test should not be zero
-    # Kept for readability/structure, but bypassed for stability 
-    return 0.0 
+def conv_penalty(conv, convpenalty=0.7, penalty_sum=0):
+    from math import log
+    temp_const = 1e-6
+    for i in range(len(conv)):
+        penalty_sum += log(min(conv[i], 1.0) + temp_const)
+    return penalty_sum * convpenalty
 
-def bracket_penalty(new_token, open_bracket_id, close_bracket_id, penalty=-10000): ##change as per nedeed
+def bracket_penalty(new_token, open_bracket_id, close_bracket_id, penalty=-10): ##change as per nedeed
     sum_open_bracket=0
     sum_close_bracket=0
     if open_bracket_id == -1 or close_bracket_id == -1: return 0 # Safety check
@@ -57,7 +60,7 @@ def normalised_beam_score(beam_score,length,conv,new_token, open_bracket_id, clo
 # PYTORCH-SAFE WRAPPER ENGINE
 # ==========================================
 
-def beam_decode(decoder, encoder, image, tokenizer, device, beam_width=12):
+def beam_decode(decoder, encoder, image, tokenizer, device):
     
     # 1. Dynamically fetch IDs
     eos = tokenizer.token_to_id.get("<end>")
@@ -66,9 +69,9 @@ def beam_decode(decoder, encoder, image, tokenizer, device, beam_width=12):
     close_bracket_id = tokenizer.token_to_id.get("}", -1)
     
     # 2. Person 1's Original Hyperparameters
-    min_score_token=-11 
+    min_score_token=-11
     temp_const=1e-6 
-    # beam_width=12
+    beam_width=9
     min_length=4 
     
     token_score={'tokens':[start_id],'score':0.0}
@@ -78,8 +81,10 @@ def beam_decode(decoder, encoder, image, tokenizer, device, beam_width=12):
     # 3. Extract visual features exactly ONCE
     with torch.no_grad():
         enc_out, src_lengths = encoder(image)
-        
-    active_beams = [(token_score['tokens'], token_score['score'], [0.0])]
+
+    # CHANGE 1 — initialise coverage as full source_len vector per beam
+    src_len = enc_out.shape[1]  # 49 for ResNet34 7x7
+    active_beams = [(token_score['tokens'], token_score['score'], [0.0] * src_len)]
     
     while active_beams:
         all_candidates = [] 
@@ -88,9 +93,8 @@ def beam_decode(decoder, encoder, image, tokenizer, device, beam_width=12):
             tgt_tensor = torch.tensor([b_tokens], dtype=torch.long).to(device)
             
             with torch.no_grad():
-                # FIX: Use Person 2's specific decode_step! 
-                # It requires src_lengths and returns only the NEXT token's logits.
-                logits, _ = decoder.decode_step(tgt_tensor, enc_out, src_lengths)
+                
+                logits, attn = decoder.decode_step(tgt_tensor, enc_out, src_lengths)
                 
                 # logits is shape [1, vocab_size]
                 next_token_logits = logits[0]
@@ -98,6 +102,8 @@ def beam_decode(decoder, encoder, image, tokenizer, device, beam_width=12):
                 
                 topb, indices = torch.topk(log_probs, beam_width)
                 best_score = topb[0].item()
+
+            attn_weights = attn[0].tolist()  # (src_len,)
 
             for score, tok_id in zip(topb, indices):
                 t_id = tok_id.item()
@@ -116,12 +122,15 @@ def beam_decode(decoder, encoder, image, tokenizer, device, beam_width=12):
                 rep_penalty = get_repetition_penalty(b_tokens, t_id)
                 new_score = b_score + score.item() + rep_penalty
 
-                new_coverage = b_conv.copy() 
+                
+                new_coverage = b_conv.copy()
+                for i in range(src_len):
+                    new_coverage[i] += attn_weights[i]
 
                 if not(max_len(len(new_token))):
                     continue
 
-                # Completion check
+            
                 if(t_id == eos and len(new_token) > min_length):
                     norm_score = normalised_beam_score(new_score, len(new_token), new_coverage, new_token, open_bracket_id, close_bracket_id)
                     completed.append({'tokens': new_token, 'score': norm_score})
