@@ -1,10 +1,6 @@
 import torch
 from math import log
 
-# ==========================================
-# PERSON 1'S ORIGINAL PENALTY FUNCTIONS
-# ==========================================
-
 def max_len(length,a=150): #define the max len at which you recive max beifit (Changed to 150 for memory safety)
     if length<a:
         return True
@@ -56,10 +52,6 @@ def normalised_beam_score(beam_score,length,conv,new_token, open_bracket_id, clo
     return beam_score/lenp(length)+conv_penalty(conv)+bracket_penalty(new_token, open_bracket_id, close_bracket_id)
 
 
-# ==========================================
-# PYTORCH-SAFE WRAPPER ENGINE
-# ==========================================
-
 def beam_decode(decoder, encoder, image, tokenizer, device):
     
     # 1. Dynamically fetch IDs
@@ -82,7 +74,6 @@ def beam_decode(decoder, encoder, image, tokenizer, device):
     with torch.no_grad():
         enc_out, src_lengths = encoder(image)
 
-    # CHANGE 1 — initialise coverage as full source_len vector per beam
     src_len = enc_out.shape[1]  # 49 for ResNet34 7x7
     active_beams = [(token_score['tokens'], token_score['score'], [0.0] * src_len)]
     
